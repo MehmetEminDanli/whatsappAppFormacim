@@ -1,6 +1,9 @@
 require('dotenv').config();
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
 const qrcode = require('qrcode-terminal');
+const pino = require('pino');
 const { initGemini, askGemini, resetChatSession } = require('./gemini');
 
 // Yapılandırma kontrolleri
@@ -12,6 +15,7 @@ const sessionTimeout = parseInt(process.env.SESSION_TIMEOUT_MINUTES || '30', 10)
 
 console.log('==================================================');
 console.log('   Formacım (formaciim.com) WhatsApp AI Botu');
+console.log('   [Motor: Baileys - Ultra Hafif & 7/24 Bulut]');
 console.log('==================================================');
 
 // Gemini AI başlatma
@@ -23,13 +27,11 @@ try {
   process.exit(1);
 }
 
-const fs = require('fs');
-const http = require('http');
-
 let latestQR = null;
 let isBotReady = false;
+let currentSock = null;
 
-// Bulut ortamları (Render vb.) için 7/24 Sağlık Kontrolü ve Canlı Web QR Paneli
+// Bulut ortamları (Render, Hugging Face vb.) için 7/24 Sağlık Kontrolü ve Canlı Web QR Paneli
 const port = process.env.PORT || 7860;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -84,7 +86,7 @@ const server = http.createServer((req, res) => {
       <body>
         <div class="card">
           <h2>⚽ Formacım WhatsApp Giriş</h2>
-          <p>Telefonunuzdan <b>WhatsApp Business &gt; Bağlı Cihazlar &gt; Cihaz Bağla</b> seçeneğine dokunup aşağıdaki karekodu okutun:</p>
+          <p>Telefonunuzdan <b>WhatsApp &gt; Bağlı Cihazlar &gt; Cihaz Bağla</b> seçeneğine dokunup aşağıdaki karekodu okutun:</p>
           <div class="qr-box">
             <img src="${qrImageUrl}" alt="WhatsApp QR Kod" width="300" height="300" />
           </div>
@@ -102,7 +104,7 @@ const server = http.createServer((req, res) => {
       <meta charset="utf-8">
       <meta http-equiv="refresh" content="5">
       <title>Yükleniyor...</title>
-      <style>body { font-family: sans-serif; text-align: center; padding-top: 60px; background: #f0f2f5; }</style>
+      <style>body { font-family: sans-serif; text-align: center; padding-top: 60px; background: #f0f2f5; color: #111b21; }</style>
     </head>
     <body>
       <h2>⏳ WhatsApp Başlatılıyor...</h2>
@@ -111,91 +113,9 @@ const server = http.createServer((req, res) => {
     </html>
   `);
 });
+
 server.listen(port, () => {
   console.log(`[Web Sunucu] Port ${port} üzerinde web paneli dinleniyor.`);
-});
-
-// Windows üzerinde yüklü Chrome veya Edge'i otomatik tespit etme
-function getBrowserExecutablePath() {
-  const possiblePaths = [
-    process.env.CHROME_PATH,
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
-  ].filter(Boolean);
-
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      console.log(`[Tarayıcı] Bulunan tarayıcı kullanılıyor: ${p}`);
-      return p;
-    }
-  }
-  return undefined;
-}
-
-// WhatsApp Web İstemcisini Yapılandırma
-const client = new Client({
-  authStrategy: new LocalAuth({
-    dataPath: './.wwebjs_auth'
-  }),
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-  puppeteer: {
-    headless: true,
-    executablePath: getBrowserExecutablePath(),
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-    ]
-  },
-  webVersionCache: {
-    type: 'remote',
-    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1048873846-alpha.html'
-  }
-});
-
-// QR Kodu Terminalde ve Web Sayfasında Gösterme
-client.on('qr', (qr) => {
-  latestQR = qr;
-  isBotReady = false;
-  console.log('\n[WhatsApp] Giriş için QR kod oluşturuldu:');
-  console.log('Lütfen telefonunuzdan WhatsApp uygulamasını açın:');
-  console.log('1. Ayarlar / Seçenekler (Üç nokta) menüsüne gidin');
-  console.log('2. "Bağlı Cihazlar" seçeneğine dokunun');
-  console.log('3. "Cihaz Bağla" diyerek aşağıdaki QR kodu taratın:\n');
-  qrcode.generate(qr, { small: true });
-});
-
-// Kimlik Doğrulama Başarılı
-client.on('authenticated', () => {
-  console.log('[WhatsApp] ✅ Oturum başarıyla doğrulandı.');
-});
-
-// Kimlik Doğrulama Hatası
-client.on('auth_failure', (msg) => {
-  console.error('[WhatsApp] ❌ Kimlik doğrulama başarısız:', msg);
-});
-
-// Bot Hazır Duruma Geldiğinde
-client.on('ready', () => {
-  isBotReady = true;
-  latestQR = null;
-  console.log('\n==================================================');
-  console.log('🚀 BOT AKTİF VE ÇALIŞIYOR!');
-  console.log('Müşteri mesajları bekleniyor ve Gemini ile yanıtlanacak...');
-  console.log('==================================================\n');
-});
-
-// Bağlantı Kesildiğinde
-client.on('disconnected', (reason) => {
-  console.log('[WhatsApp] ⚠️ Bağlantı kesildi. Sebep:', reason);
 });
 
 // İnsan benzeri bekleme yardımcısı
@@ -204,99 +124,186 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Kullanıcı başına spam önleme takibi
 const userLastReplied = new Map();
 
-// Gelen Mesajları Dinleme
-client.on('message', async (msg) => {
-  try {
-    // 1. Kendi gönderdiğimiz mesajları atla
-    if (ignoreMe && msg.fromMe) {
-      return;
-    }
+/**
+ * WhatsApp Bağlantısını Başlatan Ana Fonksiyon (Baileys)
+ */
+async function startWhatsApp() {
+  const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    Browsers
+  } = await import('@whiskeysockets/baileys');
 
-    // 2. Durum güncellemelerini (Story) atla
-    if (msg.from === 'status@broadcast') {
-      return;
-    }
-
-    // 3. Grup mesajlarını atla (isteğe bağlı)
-    const isGroup = msg.from.endsWith('@g.us');
-    if (ignoreGroups && isGroup) {
-      return;
-    }
-
-    const sender = msg.from;
-    const senderName = msg._data?.notifyName || sender.replace('@c.us', '');
-    const messageText = (msg.body || '').trim();
-
-    // Medya mesajı gelmiş ve metin boşsa
-    if (!messageText && msg.hasMedia) {
-      console.log(`[Mesaj] ${senderName} (${sender}): Medya gönderdi.`);
-      const mediaWarn = 'Şu anda görselleri veya ses kayıtlarını otomatik işleyemiyorum. Sorularınızı lütfen yazılı olarak iletebilir misiniz? ⚽';
-      try {
-        await msg.reply(mediaWarn);
-      } catch (_) {
-        await client.sendMessage(sender, mediaWarn);
-      }
-      return;
-    }
-
-    if (!messageText) {
-      return;
-    }
-
-    console.log(`\n[Gelen Mesaj] Kimden: ${senderName} (${sender})`);
-    console.log(`[İçerik]: ${messageText}`);
-
-    // Özel komut: Sohbet hafızasını sıfırlama
-    if (messageText.toLowerCase() === '!sifirla' || messageText.toLowerCase() === '!reset') {
-      resetChatSession(sender);
-      const resetMsg = '🔄 Sohbet geçmişimiz sıfırlandı. Size formaciim.com hakkında nasıl yardımcı olabilirim? ⚽';
-      try {
-        await msg.reply(resetMsg);
-      } catch (_) {
-        await client.sendMessage(sender, resetMsg);
-      }
-      console.log(`[Sohbet Sıfırlandı]: ${sender}`);
-      return;
-    }
-
-    // Anti-Ban Koruması: Peş peşe atılan mesajlarda doğal bekleme
-    const now = Date.now();
-    const lastReply = userLastReplied.get(sender) || 0;
-    if (now - lastReply < 2500) {
-      console.log(`[Anti-Spam] ${senderName} peş peşe yazdı, insan davranışı için bekleniyor...`);
-      await sleep(2000);
-    }
-    userLastReplied.set(sender, Date.now());
-
-    // Gemini'den yanıt al
-    const aiResponse = await askGemini(sender, messageText, sessionTimeout);
-
-    // Eğer bot yanıt üretemediyse, donduysa veya zaman aşımına uğradıysa SESSİZ KAL (mesaj gönderme)
-    if (!aiResponse || !aiResponse.trim()) {
-      console.log(`[Sessiz Mod] Yanıt üretilemedi veya sistem zaman aşımına uğradı. Müşteriye mesaj atılmadı.`);
-      return;
-    }
-
-    // Anti-Ban & İnsan Simülasyonu: 2.5 - 4.5 saniye arası doğal düşünme/yazma gecikmesi
-    // WhatsApp'ın robot tespit algoritmalarını tamamen engeller
-    const humanDelay = Math.floor(Math.random() * 2000) + 2500;
-    console.log(`[Doğal Yanıt Beklemesi] ${humanDelay}ms...`);
-    await sleep(humanDelay);
-
-    // Müşteriye yanıt gönder (Önce alıntılı yanıt denenir, hata verirse doğrudan gönderilir)
-    try {
-      await msg.reply(aiResponse);
-    } catch (replyErr) {
-      console.log(`[Bilgi] msg.reply yerine doğrudan sendMessage kullanılıyor: ${replyErr.message}`);
-      await client.sendMessage(sender, aiResponse);
-    }
-    console.log(`[Cevap Gönderildi -> ${senderName}]:\n${aiResponse}\n`);
-
-  } catch (err) {
-    console.error('[Mesaj İşleme Hatası]:', err);
+  const authDir = path.join(__dirname, 'baileys_auth');
+  if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
   }
+
+  const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({
+    version: [2, 3000, 1015901307],
+    isLatest: true
+  }));
+
+  console.log(`[WhatsApp] Baileys sürümü: ${version.join('.')} (En güncel: ${isLatest})`);
+
+  const sock = makeWASocket({
+    version,
+    logger: pino({ level: 'silent' }),
+    printQRInTerminal: false,
+    auth: state,
+    browser: Browsers.windows('Desktop'),
+    syncFullHistory: false, // RAM tasarrufu için geçmiş mesajları çekmez
+    generateHighQualityLinkPreview: true,
+    markOnlineOnConnect: true
+  });
+
+  currentSock = sock;
+
+  // Kimlik ve Oturum Dosyalarını Kaydet
+  sock.ev.on('creds.update', saveCreds);
+
+  // Bağlantı Durumu Değişiklikleri
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      latestQR = qr;
+      isBotReady = false;
+      console.log('\n[WhatsApp] Giriş için QR kod oluşturuldu:');
+      console.log('Lütfen telefonunuzdan WhatsApp uygulamasını açın:');
+      console.log('1. Ayarlar / Seçenekler (Üç nokta) menüsüne gidin');
+      console.log('2. "Bağlı Cihazlar" seçeneğine dokunun');
+      console.log('3. "Cihaz Bağla" diyerek aşağıdaki QR kodu taratın:\n');
+      qrcode.generate(qr, { small: true });
+    }
+
+    if (connection === 'close') {
+      isBotReady = false;
+      latestQR = null;
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      console.log(`[WhatsApp] ⚠️ Bağlantı kapandı (Kod: ${statusCode}). Yeniden bağlanıyor: ${shouldReconnect}`);
+
+      if (shouldReconnect) {
+        console.log('[WhatsApp] 🔄 3 saniye içinde yeniden bağlanılıyor...');
+        setTimeout(startWhatsApp, 3000);
+      } else {
+        console.log('[WhatsApp] ❌ Oturum kapatıldı (Logged Out). Yeni karekod için logout.js çalıştırabilirsiniz.');
+      }
+    } else if (connection === 'open') {
+      isBotReady = true;
+      latestQR = null;
+      console.log('\n==================================================');
+      console.log('🚀 BOT AKTİF VE ÇALIŞIYOR!');
+      console.log('Müşteri mesajları bekleniyor ve Gemini ile yanıtlanacak...');
+      console.log('==================================================\n');
+    }
+  });
+
+  // Gelen Mesajları Dinleme ve Yanıtlama
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+
+    for (const msg of messages) {
+      try {
+        if (!msg.message) continue;
+
+        // 1. Kendi gönderdiğimiz mesajları atla
+        if (ignoreMe && msg.key.fromMe) continue;
+
+        const jid = msg.key.remoteJid;
+        if (!jid) continue;
+
+        // 2. Durum güncellemelerini (Story / Broadcast) atla
+        if (jid === 'status@broadcast') continue;
+
+        // 3. Grup mesajlarını atla (isteğe bağlı)
+        const isGroup = jid.endsWith('@g.us');
+        if (ignoreGroups && isGroup) continue;
+
+        // Mesaj metnini farklı mesaj tiplerinden ayıkla
+        const messageText = (
+          msg.message.conversation ||
+          msg.message.extendedTextMessage?.text ||
+          msg.message.imageMessage?.caption ||
+          msg.message.videoMessage?.caption ||
+          ''
+        ).trim();
+
+        const senderNumber = jid.split('@')[0];
+        const senderName = msg.pushName || senderNumber;
+
+        // Medya var ama metin yoksa kibarca uyar
+        const hasMedia = Boolean(msg.message.imageMessage || msg.message.videoMessage || msg.message.audioMessage || msg.message.documentMessage);
+        if (!messageText && hasMedia) {
+          console.log(`[Mesaj] ${senderName} (${senderNumber}): Medya gönderdi.`);
+          const mediaWarn = 'Şu anda görselleri veya ses kayıtlarını otomatik işleyemiyorum. Sorularınızı lütfen yazılı olarak iletebilir misiniz? ⚽';
+          await sock.sendMessage(jid, { text: mediaWarn });
+          continue;
+        }
+
+        if (!messageText) continue;
+
+        console.log(`\n[Gelen Mesaj] Kimden: ${senderName} (${senderNumber})`);
+        console.log(`[İçerik]: ${messageText}`);
+
+        // Özel komut: Sohbet hafızasını sıfırlama
+        if (messageText.toLowerCase() === '!sifirla' || messageText.toLowerCase() === '!reset') {
+          resetChatSession(jid);
+          const resetMsg = '🔄 Sohbet geçmişimiz sıfırlandı. Size formaciim.com hakkında nasıl yardımcı olabilirim? ⚽';
+          await sock.sendMessage(jid, { text: resetMsg });
+          console.log(`[Sohbet Sıfırlandı]: ${senderName} (${jid})`);
+          continue;
+        }
+
+        // Anti-Ban Koruması: Peş peşe atılan mesajlarda doğal bekleme
+        const now = Date.now();
+        const lastReply = userLastReplied.get(jid) || 0;
+        if (now - lastReply < 2500) {
+          console.log(`[Anti-Spam] ${senderName} peş peşe yazdı, bekleniyor...`);
+          await sleep(2000);
+        }
+        userLastReplied.set(jid, Date.now());
+
+        // WhatsApp "Yazıyor..." (typing) simülasyonu
+        try {
+          await sock.sendPresenceUpdate('composing', jid);
+        } catch (_) {}
+
+        // Gemini'den yanıt al
+        const aiResponse = await askGemini(jid, messageText, sessionTimeout);
+
+        try {
+          await sock.sendPresenceUpdate('paused', jid);
+        } catch (_) {}
+
+        // Eğer bot yanıt üretemediyse, donduysa veya zaman aşımına uğradıysa SESSİZ KAL
+        if (!aiResponse || !aiResponse.trim()) {
+          console.log(`[Sessiz Mod] Yanıt üretilemedi veya zaman aşımı. Müşteriye mesaj atılmadı.`);
+          continue;
+        }
+
+        // Anti-Ban & İnsan Simülasyonu: 2.5 - 4.5 saniye arası doğal düşünme/yazma gecikmesi
+        const humanDelay = Math.floor(Math.random() * 2000) + 2500;
+        console.log(`[Doğal Yanıt Beklemesi] ${humanDelay}ms...`);
+        await sleep(humanDelay);
+
+        // Müşteriye yanıt gönder
+        await sock.sendMessage(jid, { text: aiResponse.trim() });
+        console.log(`[Cevap Gönderildi -> ${senderName}]:\n${aiResponse.trim()}\n`);
+
+      } catch (err) {
+        console.error('[Mesaj İşleme Hatası]:', err);
+      }
+    }
+  });
+}
+
+// Botu başlat
+startWhatsApp().catch((err) => {
+  console.error('[WhatsApp Başlatma Hatası]:', err);
 });
-
-// İstemciyi başlat
-client.initialize();
-

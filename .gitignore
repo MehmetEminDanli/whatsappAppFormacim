@@ -9,6 +9,8 @@ node_modules/
 # WhatsApp Authentication & Sessions
 .wwebjs_auth/
 .wwebjs_cache/
+baileys_auth/
+baileys_store.json
 
 # Logs
 logs/

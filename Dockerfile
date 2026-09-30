@@ -1,33 +1,15 @@
 FROM node:20-slim
 
-# Chromium ve gerekli sistem kütüphanelerini yükle
-RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-freefont-ttf \
-    libxss1 \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Çalışma dizini
 WORKDIR /app
 
-# Paket dosyalarını kopyala ve yükle
+# Paket tanımlarını kopyala ve kur
 COPY package*.json ./
-RUN npm install
+RUN npm install --omit=dev
 
-# Proje dosyalarını kopyala
+# Uygulama kodlarını kopyala
 COPY . .
 
-# Puppeteer için Chromium yolunu ayarla
-ENV CHROME_PATH=/usr/bin/chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Port açma (Hugging Face Spaces varsayılan 7860)
+# Web paneli portu (Render / Hugging Face varsayılan)
 EXPOSE 7860
 
 # Başlat

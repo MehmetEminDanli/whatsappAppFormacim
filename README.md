@@ -99,7 +99,7 @@ Bot, müşterinin mesajını inceler (örn: *"Alonso F1 tshirt var mı?"*, *"Mar
 ## ⚙️ Özellikler ve İpuçları
 
 1. **Kalıcı Oturum (Tekrar Tekrar QR Okutmaya Gerek Yok):**
-   - QR kodu bir kez tarattıktan sonra oturum bilgileri yerel olarak `.wwebjs_auth` klasöründe saklanır. Botu kapatıp tekrar açtığınızda otomatik bağlanır.
+   - QR kodu bir kez tarattıktan sonra oturum bilgileri yerel olarak `baileys_auth` klasöründe saklanır. Botu kapatıp tekrar açtığınızda otomatik bağlanır.
 
 2. **Müşteri Sohbet Hafızası:**
    - Müşteri "Boyum 180 kilom 80" deyip ardından "Peki bu bedende Real Madrid retro var mı?" dediğinde Gemini önceki mesajı hatırlar ve bağlamı korur.
