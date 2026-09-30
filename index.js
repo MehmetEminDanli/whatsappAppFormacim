@@ -26,14 +26,93 @@ try {
 const fs = require('fs');
 const http = require('http');
 
-// Bulut ortamları (Render, Koyeb vb.) için 7/24 Sağlık Kontrolü Web Sunucusu
+let latestQR = null;
+let isBotReady = false;
+
+// Bulut ortamları (Render vb.) için 7/24 Sağlık Kontrolü ve Canlı Web QR Paneli
 const port = process.env.PORT || 7860;
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('⚽ Formacım (formaciim.com) WhatsApp AI Botu Aktif ve Çalışıyor!');
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+
+  if (isBotReady) {
+    return res.end(`
+      <!DOCTYPE html>
+      <html lang="tr">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Formacım Bot - Aktif</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 50px 20px; background: #0b141a; color: #e9edef; }
+          .card { background: #111b21; max-width: 480px; margin: 0 auto; padding: 40px 20px; border-radius: 16px; border: 1px solid #222e35; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+          .badge { display: inline-block; background: #00a884; color: #fff; padding: 8px 18px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; font-size: 16px; }
+          h2 { margin: 0 0 10px; color: #fff; }
+          p { color: #8696a0; font-size: 15px; line-height: 1.5; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge">● BOT AKTİF VE BAĞLI</div>
+          <h2>Formacım WhatsApp Botu</h2>
+          <p>Yapay zeka asistanı WhatsApp Business hesabınıza bağlıdır ve gelen müşteri mesajlarını 7/24 otomatik yanıtlamaktadır. ⚽✨</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  if (latestQR) {
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=350x350&margin=15&data=${encodeURIComponent(latestQR)}`;
+    return res.end(`
+      <!DOCTYPE html>
+      <html lang="tr">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Formacım WhatsApp QR Kod</title>
+        <meta http-equiv="refresh" content="20">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 15px; background: #f0f2f5; color: #111b21; }
+          .card { background: #ffffff; max-width: 440px; margin: 0 auto; padding: 30px 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+          h2 { margin-top: 0; color: #111b21; font-size: 22px; }
+          p { color: #54656f; font-size: 15px; margin: 10px 0 20px; }
+          .qr-box { background: #fff; border: 2px solid #e9edef; border-radius: 12px; display: inline-block; padding: 10px; }
+          .qr-box img { display: block; max-width: 100%; height: auto; }
+          .tip { font-size: 13px; color: #8696a0; margin-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>⚽ Formacım WhatsApp Giriş</h2>
+          <p>Telefonunuzdan <b>WhatsApp Business &gt; Bağlı Cihazlar &gt; Cihaz Bağla</b> seçeneğine dokunup aşağıdaki karekodu okutun:</p>
+          <div class="qr-box">
+            <img src="${qrImageUrl}" alt="WhatsApp QR Kod" width="300" height="300" />
+          </div>
+          <p class="tip">🔄 Karekod her 20 saniyede bir otomatik yenilenir.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  res.end(`
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+      <meta charset="utf-8">
+      <meta http-equiv="refresh" content="5">
+      <title>Yükleniyor...</title>
+      <style>body { font-family: sans-serif; text-align: center; padding-top: 60px; background: #f0f2f5; }</style>
+    </head>
+    <body>
+      <h2>⏳ WhatsApp Başlatılıyor...</h2>
+      <p>Karekod hazırlanıyor, sayfa 5 saniye içinde otomatik yenilenecektir...</p>
+    </body>
+    </html>
+  `);
 });
 server.listen(port, () => {
-  console.log(`[Web Sunucu] Port ${port} üzerinde sağlık kontrolü dinleniyor.`);
+  console.log(`[Web Sunucu] Port ${port} üzerinde web paneli dinleniyor.`);
 });
 
 // Windows üzerinde yüklü Chrome veya Edge'i otomatik tespit etme
@@ -78,8 +157,10 @@ const client = new Client({
   }
 });
 
-// QR Kodu Terminalde Gösterme
+// QR Kodu Terminalde ve Web Sayfasında Gösterme
 client.on('qr', (qr) => {
+  latestQR = qr;
+  isBotReady = false;
   console.log('\n[WhatsApp] Giriş için QR kod oluşturuldu:');
   console.log('Lütfen telefonunuzdan WhatsApp uygulamasını açın:');
   console.log('1. Ayarlar / Seçenekler (Üç nokta) menüsüne gidin');
@@ -100,6 +181,8 @@ client.on('auth_failure', (msg) => {
 
 // Bot Hazır Duruma Geldiğinde
 client.on('ready', () => {
+  isBotReady = true;
+  latestQR = null;
   console.log('\n==================================================');
   console.log('🚀 BOT AKTİF VE ÇALIŞIYOR!');
   console.log('Müşteri mesajları bekleniyor ve Gemini ile yanıtlanacak...');
