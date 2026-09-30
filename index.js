@@ -24,6 +24,17 @@ try {
 }
 
 const fs = require('fs');
+const http = require('http');
+
+// Bulut ortamları (Render, Koyeb vb.) için 7/24 Sağlık Kontrolü Web Sunucusu
+const port = process.env.PORT || 7860;
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('⚽ Formacım (formaciim.com) WhatsApp AI Botu Aktif ve Çalışıyor!');
+});
+server.listen(port, () => {
+  console.log(`[Web Sunucu] Port ${port} üzerinde sağlık kontrolü dinleniyor.`);
+});
 
 // Windows üzerinde yüklü Chrome veya Edge'i otomatik tespit etme
 function getBrowserExecutablePath() {
