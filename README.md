@@ -118,3 +118,12 @@ Bot, müşterinin mesajını inceler (örn: *"Alonso F1 tshirt var mı?"*, *"Mar
 6. **Bilgi Bankasını Güncelleme:**
    - Yeni ürün, kampanya veya kargo politikası eklemek için tek yapmanız gereken `prompt.js` dosyasındaki metni güncellemektir.
 
+---
+
+## 👥 Katkıda Bulunanlar (Contributors)
+
+* [@MehmetEminDanli](https://github.com/MehmetEminDanli) - Proje Sahibi & Geliştirici
+* [@MED-CE](https://github.com/MED-CE) - Geliştirici & Katkı Sağlayıcı
+* [@Sukruyusufy](https://github.com/Sukruyusufy) - Geliştirici & Katkı Sağlayıcı
+
+
