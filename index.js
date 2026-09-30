@@ -139,6 +139,7 @@ const client = new Client({
   authStrategy: new LocalAuth({
     dataPath: './.wwebjs_auth'
   }),
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
   puppeteer: {
     headless: true,
     executablePath: getBrowserExecutablePath(),
@@ -149,11 +150,14 @@ const client = new Client({
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--disable-blink-features=AutomationControlled',
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
     ]
   },
   webVersionCache: {
-    type: 'none'
+    type: 'remote',
+    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1048873846-alpha.html'
   }
 });
 
