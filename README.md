@@ -115,7 +115,14 @@ Bot, müşterinin mesajını inceler (örn: *"Alonso F1 tshirt var mı?"*, *"Mar
 5. **"Yazıyor..." Efekti:**
    - Bot yanıt hazırlarken müşteriye WhatsApp'ta "yazıyor..." göstergesi çıkararak doğal bir deneyim sunar.
 
-6. **Bilgi Bankasını Güncelleme:**
+6. **🛡️ Akıllı Temsilci Devretme (Hibrit Canlı Destek):**
+   - **Temsilci Yazdığında Otomatik Susma:** Gerçek bir satış temsilcisi telefonundan müşteriye herhangi bir mesaj yazdığında bot durumu anlar ve o müşteri için 2 saat (`HANDOFF_TIMEOUT_MINUTES`) boyunca otomatik olarak sessize geçer.
+   - **Müşteri Yetkili İstediğinde:** Müşteri *"temsilciye bağla"*, *"yetkili ile görüşmek istiyorum"* veya *"canlı destek"* yazdığında bot *"Sizi yetkili satış temsilcimize aktarıyorum..."* diyerek sohbeti temsilciye devreder ve susar.
+   - **Manuel Temsilci Komutları:**
+     * `!dur` veya `!sus`: Temsilci sohbete yazdığında bot o müşteri için 24 saat durur.
+     * `!bot` veya `!ac`: Temsilci sohbete yazdığında bot o müşteri için yeniden devreye girer.
+
+7. **Bilgi Bankasını Güncelleme:**
    - Yeni ürün, kampanya veya kargo politikası eklemek için tek yapmanız gereken `prompt.js` dosyasındaki metni güncellemektir.
 
 ---

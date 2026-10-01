@@ -12,10 +12,11 @@ const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const ignoreGroups = process.env.IGNORE_GROUPS !== 'false';
 const ignoreMe = process.env.IGNORE_ME !== 'false';
 const sessionTimeout = parseInt(process.env.SESSION_TIMEOUT_MINUTES || '30', 10);
+const handoffTimeoutMinutes = parseInt(process.env.HANDOFF_TIMEOUT_MINUTES || '120', 10);
 
 console.log('==================================================');
 console.log('   Formacım (formaciim.com) WhatsApp AI Botu');
-console.log('   [Motor: Baileys - Ultra Hafif & 7/24 Bulut]');
+console.log('   [Motor: Baileys - Hibrit Temsilci Destekli]');
 console.log('==================================================');
 
 // Gemini AI başlatma
@@ -31,12 +32,85 @@ let latestQR = null;
 let isBotReady = false;
 let currentSock = null;
 
-// Bulut ortamları (Render, Hugging Face vb.) için 7/24 Sağlık Kontrolü ve Canlı Web QR Paneli
+// ==========================================
+// 🛡️ HİBRİT TEMSİLCİ YÖNETİMİ (HANDOFF SİSTEMİ)
+// ==========================================
+const HANDOFF_FILE = path.join(__dirname, 'handoff_sessions.json');
+const pausedChats = new Map(); // jid -> resumeTimestamp
+
+function loadHandoffSessions() {
+  try {
+    if (fs.existsSync(HANDOFF_FILE)) {
+      const data = JSON.parse(fs.readFileSync(HANDOFF_FILE, 'utf8'));
+      const now = Date.now();
+      for (const [jid, expireTime] of Object.entries(data)) {
+        if (typeof expireTime === 'number' && expireTime > now) {
+          pausedChats.set(jid, expireTime);
+        }
+      }
+      if (pausedChats.size > 0) {
+        console.log(`[Handoff] Kayıtlı ${pausedChats.size} aktif temsilci oturumu hafızaya yüklendi.`);
+      }
+    }
+  } catch (err) {
+    console.error('[Handoff] Oturum dosyası okunurken hata:', err.message);
+  }
+}
+
+function saveHandoffSessions() {
+  try {
+    const obj = {};
+    const now = Date.now();
+    for (const [jid, expireTime] of pausedChats.entries()) {
+      if (expireTime > now) {
+        obj[jid] = expireTime;
+      }
+    }
+    fs.writeFileSync(HANDOFF_FILE, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Handoff] Oturum kaydedilirken hata:', err.message);
+  }
+}
+
+function pauseChat(jid, minutes = handoffTimeoutMinutes) {
+  const expireTime = Date.now() + minutes * 60 * 1000;
+  pausedChats.set(jid, expireTime);
+  saveHandoffSessions();
+}
+
+function resumeChat(jid) {
+  if (pausedChats.has(jid)) {
+    pausedChats.delete(jid);
+    saveHandoffSessions();
+  }
+}
+
+function isChatPaused(jid) {
+  if (!pausedChats.has(jid)) return false;
+  const expireTime = pausedChats.get(jid);
+  if (Date.now() > expireTime) {
+    pausedChats.delete(jid);
+    saveHandoffSessions();
+    return false;
+  }
+  return true;
+}
+
+function getPauseRemainingMinutes(jid) {
+  if (!pausedChats.has(jid)) return 0;
+  const diff = pausedChats.get(jid) - Date.now();
+  return diff > 0 ? Math.ceil(diff / (60 * 1000)) : 0;
+}
+
+loadHandoffSessions();
+
+// Bulut ortamları (Render vb.) için 7/24 Sağlık Kontrolü ve Canlı Web QR Paneli
 const port = process.env.PORT || 7860;
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 
   if (isBotReady) {
+    const activePausedCount = pausedChats.size;
     return res.end(`
       <!DOCTYPE html>
       <html lang="tr">
@@ -50,6 +124,8 @@ const server = http.createServer((req, res) => {
           .badge { display: inline-block; background: #00a884; color: #fff; padding: 8px 18px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; font-size: 16px; }
           h2 { margin: 0 0 10px; color: #fff; }
           p { color: #8696a0; font-size: 15px; line-height: 1.5; }
+          .info-box { background: #182229; border-radius: 10px; padding: 12px; margin-top: 20px; font-size: 13px; color: #aebac1; text-align: left; }
+          .info-box b { color: #00a884; }
         </style>
       </head>
       <body>
@@ -57,6 +133,13 @@ const server = http.createServer((req, res) => {
           <div class="badge">● BOT AKTİF VE BAĞLI</div>
           <h2>Formacım WhatsApp Botu</h2>
           <p>Yapay zeka asistanı WhatsApp Business hesabınıza bağlıdır ve gelen müşteri mesajlarını 7/24 otomatik yanıtlamaktadır. ⚽✨</p>
+          <div class="info-box">
+            <b>🛡️ Akıllı Temsilci Koruması:</b><br>
+            • Gerçek temsilci müşteriye yazdığında bot otomatik susar.<br>
+            • Müşteri 'temsilci/yetkili' istediğinde bot temsilciye devreder.<br>
+            • Komutlar: Temsilci sohbete <b>!dur</b> yazarak botu kapatabilir, <b>!bot</b> yazarak tekrar açabilir.<br>
+            • Şu an temsilcide olan sohbet sayısı: <b>${activePausedCount}</b>
+          </div>
         </div>
       </body>
       </html>
@@ -212,16 +295,13 @@ async function startWhatsApp() {
       try {
         if (!msg.message) continue;
 
-        // 1. Kendi gönderdiğimiz mesajları atla
-        if (ignoreMe && msg.key.fromMe) continue;
-
         const jid = msg.key.remoteJid;
         if (!jid) continue;
 
-        // 2. Durum güncellemelerini (Story / Broadcast) atla
+        // Durum güncellemelerini (Story / Broadcast) atla
         if (jid === 'status@broadcast') continue;
 
-        // 3. Grup mesajlarını atla (isteğe bağlı)
+        // Grup mesajlarını atla (isteğe bağlı)
         const isGroup = jid.endsWith('@g.us');
         if (ignoreGroups && isGroup) continue;
 
@@ -235,10 +315,55 @@ async function startWhatsApp() {
         ).trim();
 
         const senderNumber = jid.split('@')[0];
+
+        // =========================================================================
+        // 1. DURUM: MESAJI BİZ (SATIŞ TEMSİLCİSİ) GÖNDERDİYSEK (msg.key.fromMe === true)
+        // =========================================================================
+        if (msg.key.fromMe) {
+          const lowerText = messageText.toLowerCase();
+
+          // Temsilci komutu: Botu yeniden aç (!bot, !ac, !basla)
+          if (lowerText === '!bot' || lowerText === '!ac' || lowerText === '!basla') {
+            resumeChat(jid);
+            console.log(`\n[Temsilci Komutu] 🟢 Temsilci '${messageText}' yazdı. Bot bu müşteri (${senderNumber}) için YENİDEN DEVREYE ALINDI.`);
+            continue;
+          }
+
+          // Temsilci komutu: Botu uzun süreli durdur (!dur, !sus, !bekle)
+          if (lowerText === '!dur' || lowerText === '!sus' || lowerText === '!bekle') {
+            pauseChat(jid, 24 * 60); // 24 saat durdur
+            console.log(`\n[Temsilci Komutu] 🔴 Temsilci '${messageText}' yazdı. Bot bu müşteri (${senderNumber}) için 24 saat DURDURULDU.`);
+            continue;
+          }
+
+          // Temsilci müşteriye normal bir mesaj yazdı -> Bot aradan çekilir (otomatik sessize alınır)
+          if (ignoreMe) {
+            pauseChat(jid, handoffTimeoutMinutes);
+            console.log(`\n[Temsilci Devrede] 👤 Temsilci müşteriye (${senderNumber}) bizzat yazdı. Bot bu müşteri için ${handoffTimeoutMinutes} dk OTOMATİK SESSİZE ALINDI.`);
+            continue;
+          }
+        }
+
+        // =========================================================================
+        // 2. DURUM: MESAJ MÜŞTERİDEN GELDİ
+        // =========================================================================
+
         const senderName = msg.pushName || senderNumber;
 
-        // Medya var ama metin yoksa kibarca uyar
-        const hasMedia = Boolean(msg.message.imageMessage || msg.message.videoMessage || msg.message.audioMessage || msg.message.documentMessage);
+        // A) Müşteri için bot şu anda sessizde mi (Temsilci ilgileniyor mu)?
+        if (isChatPaused(jid)) {
+          const remaining = getPauseRemainingMinutes(jid);
+          console.log(`\n[Bot Sessizde] Müşteri (${senderName}): "${messageText}" yazdı. Ancak sohbet temsilcide (Kalan süre: ~${remaining} dk). Bot araya girmedi.`);
+          continue;
+        }
+
+        // B) Medya kontrolü (fotoğraf, ses, video, belge)
+        const hasMedia = Boolean(
+          msg.message.imageMessage ||
+          msg.message.videoMessage ||
+          msg.message.audioMessage ||
+          msg.message.documentMessage
+        );
         if (!messageText && hasMedia) {
           console.log(`[Mesaj] ${senderName} (${senderNumber}): Medya gönderdi.`);
           const mediaWarn = 'Şu anda görselleri veya ses kayıtlarını otomatik işleyemiyorum. Sorularınızı lütfen yazılı olarak iletebilir misiniz? ⚽';
@@ -251,16 +376,27 @@ async function startWhatsApp() {
         console.log(`\n[Gelen Mesaj] Kimden: ${senderName} (${senderNumber})`);
         console.log(`[İçerik]: ${messageText}`);
 
-        // Özel komut: Sohbet hafızasını sıfırlama
+        // C) Özel komut: Sohbet hafızasını sıfırlama
         if (messageText.toLowerCase() === '!sifirla' || messageText.toLowerCase() === '!reset') {
           resetChatSession(jid);
+          resumeChat(jid);
           const resetMsg = '🔄 Sohbet geçmişimiz sıfırlandı. Size formaciim.com hakkında nasıl yardımcı olabilirim? ⚽';
           await sock.sendMessage(jid, { text: resetMsg });
           console.log(`[Sohbet Sıfırlandı]: ${senderName} (${jid})`);
           continue;
         }
 
-        // Anti-Ban Koruması: Peş peşe atılan mesajlarda doğal bekleme
+        // D) Müşteri temsilci / yetkili istiyor mu? (Akıllı Handoff Tespiti)
+        const humanRequestRegex = /(müşteri temsilci|yetkili|canlı destek|insanla (görüş|konuş)|temsilciye bağla|yetkiliye bağla|yetkili biri|gerçek kişi|müşteri hizmetleri)/i;
+        if (humanRequestRegex.test(messageText)) {
+          const handoffMsg = 'Sizi yetkili satış temsilcimize aktarıyorum. Mesajınızı ilettim, ekibimiz en kısa sürede bizzat sizinle ilgilenecektir. Lütfen hatta kalın. ⚽';
+          await sock.sendMessage(jid, { text: handoffMsg });
+          pauseChat(jid, handoffTimeoutMinutes * 2); // 4 saat botu sessize al
+          console.log(`[Müşteri Talebi] 🤝 ${senderName} (${senderNumber}) yetkili talep etti. Bot temsilciye devredildi ve sessize alındı.`);
+          continue;
+        }
+
+        // E) Anti-Ban Koruması: Peş peşe atılan mesajlarda doğal bekleme
         const now = Date.now();
         const lastReply = userLastReplied.get(jid) || 0;
         if (now - lastReply < 2500) {
@@ -269,12 +405,12 @@ async function startWhatsApp() {
         }
         userLastReplied.set(jid, Date.now());
 
-        // WhatsApp "Yazıyor..." (typing) simülasyonu
+        // F) WhatsApp "Yazıyor..." (typing) simülasyonu
         try {
           await sock.sendPresenceUpdate('composing', jid);
         } catch (_) {}
 
-        // Gemini'den yanıt al
+        // G) Gemini'den yanıt al
         const aiResponse = await askGemini(jid, messageText, sessionTimeout);
 
         try {
@@ -287,12 +423,12 @@ async function startWhatsApp() {
           continue;
         }
 
-        // Anti-Ban & İnsan Simülasyonu: 2.5 - 4.5 saniye arası doğal düşünme/yazma gecikmesi
+        // H) Anti-Ban & İnsan Simülasyonu: 2.5 - 4.5 saniye arası doğal düşünme/yazma gecikmesi
         const humanDelay = Math.floor(Math.random() * 2000) + 2500;
         console.log(`[Doğal Yanıt Beklemesi] ${humanDelay}ms...`);
         await sleep(humanDelay);
 
-        // Müşteriye yanıt gönder
+        // I) Müşteriye yanıt gönder
         await sock.sendMessage(jid, { text: aiResponse.trim() });
         console.log(`[Cevap Gönderildi -> ${senderName}]:\n${aiResponse.trim()}\n`);
 

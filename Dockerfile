@@ -14,3 +14,4 @@ EXPOSE 7860
 
 # Başlat
 CMD ["npm", "start"]
+

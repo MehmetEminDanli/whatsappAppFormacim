@@ -30,3 +30,4 @@ if (removedAny) {
   console.log('ℹ️ Kayıtlı aktif bir oturum klasörü bulunamadı.');
   console.log('Doğrudan "npm start" yaparak WhatsApp hesabınızı bağlayabilirsiniz.\n');
 }
+
